@@ -101,11 +101,15 @@
   // raw.githubusercontent.com 은 쿼리스트링을 캐시 키로 쓰지 않아 최대 5분까지
   // 옛날 값을 돌려줍니다(확인함: ?t= 를 붙여도 source-age 가 그대로). 반면 Pages 는
   // 새로 배포될 때 캐시가 비워지므로 커밋이 반영되는 즉시 최신 값이 나옵니다.
-  var STATUS_URL = 'status.json';
-  // 더 빠른 확인이 필요할 때 쓰는 보조 경로. 실시간이지만 IP당 시간당 호출 수가
-  // 제한되어 있어서, 자동 확인에는 쓰지 않고 '새로고침'을 눌렀을 때만 같이 봅니다.
+  // 주 경로: GitHub API. 레포의 현재 내용을 그대로 돌려주므로 배포를 기다리지 않습니다.
+  //   API 응답은 60초짜리 캐시 지시를 달고 옵니다. 그래서 브라우저가 60초마다 한 번만
+  //   서버에 묻고(조건부 요청), 바뀐 게 없으면 304 로 끝납니다. 304 는 호출 한도에
+  //   잡히지 않으므로, 자주 확인해도 한도에 걸리지 않습니다.
   var API_URL = 'https://api.github.com/repos/INGlancer/aniquiz-play/contents/status.json';
-  var POLL_MS = 15000;        // 자동 확인 주기
+  // 보조 경로: 페이지와 같이 배포된 파일. API 가 막히면 이쪽을 씁니다.
+  //   (배포가 끝나야 갱신되므로 몇 분 느릴 수 있습니다)
+  var STATUS_URL = 'status.json';
+  var POLL_MS = 20000;        // 자동 확인 주기
   var STALE_MIN = 45;         // 이 시간보다 오래된 '켜짐'은 믿지 않음 (런처가 비정상 종료된 경우)
 
   var dot = document.getElementById('dot');
@@ -173,9 +177,13 @@
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
   }
 
-  // 보조 경로 — 실패하면 조용히 무시합니다 (호출 한도에 걸렸거나 네트워크 문제)
-  function readApi() {
-    return fetch(API_URL, { cache: 'no-store', headers: { 'Accept': 'application/vnd.github.raw+json' } })
+  // force=true 면 브라우저 캐시를 건너뛰고 지금 바로 물어봅니다 (새로고침 버튼용).
+  // 평소에는 기본 캐시를 그대로 둬야 조건부 요청(304)이 동작해 한도를 아낍니다.
+  function readApi(force) {
+    return fetch(API_URL, {
+      cache: force ? 'reload' : 'default',
+      headers: { 'Accept': 'application/vnd.github.raw+json' }
+    })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .catch(function () { return null; });
   }
@@ -198,7 +206,8 @@
     busy = true;
     refreshBtn.disabled = true;
 
-    var jobs = deep ? [readPages().catch(function () { return null; }), readApi()] : [readPages()];
+    // 주 경로(API) 와 보조 경로(배포된 파일) 를 함께 읽고 더 최근 값을 씁니다.
+    var jobs = [readApi(!!deep), readPages().catch(function () { return null; })];
     Promise.all(jobs)
       .then(function (list) {
         // 두 경로 중 더 최근에 기록된 값을 채택합니다.
