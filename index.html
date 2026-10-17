@@ -85,7 +85,8 @@
     <div class="tips">
       <b>이 페이지를 북마크해 두세요.</b><br>
       게임 서버 주소는 켤 때마다 바뀌지만, 이 주소는 그대로입니다.
-      서버가 켜져 있으면 위 버튼이 현재 주소로 연결해 줍니다.
+      서버가 켜져 있으면 위 버튼이 현재 주소로 연결해 줍니다.<br>
+      방금 켜졌는데 꺼짐으로 보이면 <b>새로고침</b>을 눌러 주세요.
     </div>
   </main>
 
@@ -96,11 +97,16 @@
   'use strict';
 
   // ── 상태 파일 위치 ──
-  // 같은 레포의 status.json 을 읽습니다. 런처가 서버를 켜고 끌 때마다 갱신합니다.
-  // CDN 캐시를 피하려고 주소 끝에 매번 다른 값을 붙입니다.
-  var STATUS_URL = 'https://raw.githubusercontent.com/INGlancer/aniquiz-play/main/status.json';
-  var POLL_MS = 10000;        // 자동 확인 주기
-  var STALE_MIN = 25;         // 이 시간보다 오래된 '켜짐'은 믿지 않음 (런처가 비정상 종료된 경우)
+  // 같은 페이지(GitHub Pages)에 올라온 status.json 을 읽습니다.
+  // raw.githubusercontent.com 은 쿼리스트링을 캐시 키로 쓰지 않아 최대 5분까지
+  // 옛날 값을 돌려줍니다(확인함: ?t= 를 붙여도 source-age 가 그대로). 반면 Pages 는
+  // 새로 배포될 때 캐시가 비워지므로 커밋이 반영되는 즉시 최신 값이 나옵니다.
+  var STATUS_URL = 'status.json';
+  // 더 빠른 확인이 필요할 때 쓰는 보조 경로. 실시간이지만 IP당 시간당 호출 수가
+  // 제한되어 있어서, 자동 확인에는 쓰지 않고 '새로고침'을 눌렀을 때만 같이 봅니다.
+  var API_URL = 'https://api.github.com/repos/INGlancer/aniquiz-play/contents/status.json';
+  var POLL_MS = 15000;        // 자동 확인 주기
+  var STALE_MIN = 45;         // 이 시간보다 오래된 '켜짐'은 믿지 않음 (런처가 비정상 종료된 경우)
 
   var dot = document.getElementById('dot');
   var statusText = document.getElementById('statusText');
@@ -162,27 +168,49 @@
     if (joinBtn.getAttribute('aria-disabled') === 'true') e.preventDefault();
   });
 
+  function readPages() {
+    return fetch(STATUS_URL + '?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  }
+
+  // 보조 경로 — 실패하면 조용히 무시합니다 (호출 한도에 걸렸거나 네트워크 문제)
+  function readApi() {
+    return fetch(API_URL, { cache: 'no-store', headers: { 'Accept': 'application/vnd.github.raw+json' } })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .catch(function () { return null; });
+  }
+
+  function apply(d) {
+    d = d || {};
+    var at = d.at || d.updatedAt || null;
+    if (d.online && d.url) {
+      // 런처가 갑자기 종료되면 '켜짐'인 채로 남습니다. 너무 오래된 값은 신뢰하지 않습니다.
+      if (minutesSince(at) > STALE_MIN) showUnknown('상태가 오래되었습니다', at);
+      else showOnline(d.url, at);
+    } else {
+      showOffline(at);
+    }
+  }
+
   var busy = false;
-  function check() {
+  function check(deep) {
     if (busy) return;
     busy = true;
     refreshBtn.disabled = true;
 
-    fetch(STATUS_URL + '?t=' + Date.now(), { cache: 'no-store' })
-      .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
-      .then(function (d) {
-        d = d || {};
-        var at = d.at || d.updatedAt || null;
-        if (d.online && d.url) {
-          // 런처가 갑자기 종료되면 '켜짐'인 채로 남습니다. 너무 오래된 값은 신뢰하지 않습니다.
-          if (minutesSince(at) > STALE_MIN) showUnknown('상태가 오래되었습니다', at);
-          else showOnline(d.url, at);
-        } else {
-          showOffline(at);
-        }
+    var jobs = deep ? [readPages().catch(function () { return null; }), readApi()] : [readPages()];
+    Promise.all(jobs)
+      .then(function (list) {
+        // 두 경로 중 더 최근에 기록된 값을 채택합니다.
+        var best = null, bestT = -1;
+        list.forEach(function (d) {
+          if (!d) return;
+          var t = Date.parse(d.at || d.updatedAt || '');
+          if (isNaN(t)) t = 0;
+          if (t >= bestT) { bestT = t; best = d; }
+        });
+        if (!best) throw new Error('no data');
+        apply(best);
       })
       .catch(function () {
         showUnknown('상태를 불러오지 못했습니다', null);
@@ -193,7 +221,7 @@
       });
   }
 
-  refreshBtn.addEventListener('click', check);
+  refreshBtn.addEventListener('click', function () { check(true); });   // 수동 확인은 보조 경로까지
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible') check();   // 폰에서 다시 열면 즉시 갱신
   });
