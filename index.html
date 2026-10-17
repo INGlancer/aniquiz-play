@@ -153,7 +153,7 @@
     joinBtn.href = url;
     joinBtn.setAttribute('aria-disabled', 'false');
     joinBtn.removeAttribute('tabindex');
-    updated.textContent = at ? '마지막 갱신 ' + (ago(at) || '-') : '';
+    updated.textContent = at ? '마지막 확인 ' + (ago(at) || '-') : '';
   }
 
   function showOffline(at) {
@@ -261,6 +261,32 @@
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible') check();   // 폰에서 다시 열면 즉시 갱신
   });
+
+  // ── 페이지가 바뀌면 스스로 새로고침 ──
+  // 브라우저는 한 번 받은 index.html 을 캐시에 들고 있어서, 문구를 고쳐 올려도
+  // 열어둔 사람에게는 옛 화면이 남습니다(Ctrl+F5 를 눌러야 바뀜).
+  // 그래서 캐시를 무시하고 지금 올라가 있는 파일을 주기적으로 가져와, 처음 받았던
+  // 내용과 달라지면 알아서 새로고침합니다. 버전 번호를 손으로 올릴 필요가 없습니다.
+  var pageText = null;
+  var lastReloadAt = 0;
+  function checkPageUpdate() {
+    if (document.hidden) return;
+    fetch(location.pathname + '?nocache=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (txt) {
+        if (!txt) return;
+        if (pageText === null) { pageText = txt; return; }   // 처음 한 번은 기준값만 저장
+        if (txt === pageText) return;
+        // 짧은 시간에 반복 새로고침하지 않도록 한 번 걸러줍니다
+        if (Date.now() - lastReloadAt < 30000) return;
+        lastReloadAt = Date.now();
+        pageText = txt;
+        location.reload();
+      })
+      .catch(function () {});
+  }
+  checkPageUpdate();
+  setInterval(checkPageUpdate, 2 * 60 * 1000);   // 2분마다
 
   check();
   setInterval(function () {
