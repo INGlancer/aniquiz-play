@@ -153,7 +153,7 @@
     joinBtn.href = url;
     joinBtn.setAttribute('aria-disabled', 'false');
     joinBtn.removeAttribute('tabindex');
-    updated.textContent = at ? '마지막 확인 ' + (ago(at) || '-') : '';
+    updated.textContent = at ? '마지막 갱신 ' + (ago(at) || '-') : '';
   }
 
   function showOffline(at) {
@@ -163,7 +163,7 @@
     joinBtn.href = '#';
     joinBtn.setAttribute('aria-disabled', 'true');
     joinBtn.setAttribute('tabindex', '-1');
-    updated.textContent = at ? '마지막 확인 ' + (ago(at) || '-') : '';
+    updated.textContent = at ? '마지막 갱신 ' + (ago(at) || '-') : '';
   }
 
   function showUnknown(msg, at) {
@@ -173,7 +173,7 @@
     joinBtn.href = '#';
     joinBtn.setAttribute('aria-disabled', 'true');
     joinBtn.setAttribute('tabindex', '-1');
-    updated.textContent = at ? '마지막 확인 ' + (ago(at) || '-') : '';
+    updated.textContent = at ? '마지막 갱신 ' + (ago(at) || '-') : '';
   }
 
   joinBtn.addEventListener('click', function (e) {
