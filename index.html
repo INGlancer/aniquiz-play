@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>애니 퀴즈 접속</title>
+<meta name="description" content="애니 & 노래 맞추기 멀티 퀴즈 — 서버 상태 확인 및 접속">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
+<style>
+  :root{
+    --bg:#0f1424; --card:#16213e; --line:#2d2d44; --ink:#eef1f8; --dim:#8b93a7;
+    --on:#4ecca3; --off:#e94560; --warn:#ffb020; --gold:#ffcc00;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100dvh; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px 16px; gap:18px;
+  }
+  .card{
+    width:100%; max-width:440px; background:var(--card); border:1px solid var(--line);
+    border-radius:18px; padding:28px 24px; box-shadow:0 18px 50px rgba(0,0,0,.45);
+    display:flex; flex-direction:column; align-items:center; gap:18px; text-align:center;
+  }
+  h1{margin:0; font-size:19px; letter-spacing:-.3px;}
+  h1 span{color:var(--on);}
+  .sub{margin:0; font-size:12.5px; color:var(--dim); line-height:1.6;}
+
+  .status{display:flex; align-items:center; gap:10px; font-size:17px; font-weight:700;}
+  .dot{width:13px; height:13px; border-radius:50%; background:var(--dim); flex:0 0 auto;}
+  .dot.on{background:var(--on); box-shadow:0 0 0 0 rgba(78,204,163,.55); animation:pulse 2s infinite;}
+  .dot.off{background:var(--off);}
+  .dot.warn{background:var(--warn);}
+  @keyframes pulse{
+    70%{box-shadow:0 0 0 12px rgba(78,204,163,0);}
+    100%{box-shadow:0 0 0 0 rgba(78,204,163,0);}
+  }
+  @media (prefers-reduced-motion:reduce){ .dot.on{animation:none;} }
+
+  .btn{
+    width:100%; padding:15px 20px; border-radius:11px; border:none; cursor:pointer;
+    font-size:16px; font-weight:800; font-family:inherit; text-decoration:none;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    background:var(--on); color:#10251d; transition:transform .08s ease, filter .15s ease;
+  }
+  .btn:hover{filter:brightness(1.07);}
+  .btn:active{transform:translateY(1px);}
+  .btn[aria-disabled="true"]{
+    background:#232a3f; color:#5c6479; cursor:not-allowed; filter:none; transform:none;
+  }
+
+  .meta{font-size:11.5px; color:var(--dim); display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center;}
+  .refresh{
+    background:none; border:1px solid var(--line); color:var(--dim); font-family:inherit;
+    font-size:11.5px; padding:4px 10px; border-radius:999px; cursor:pointer;
+  }
+  .refresh:hover{color:var(--ink); border-color:#3d4260;}
+
+  .tips{
+    width:100%; border-top:1px solid var(--line); padding-top:16px;
+    font-size:12px; color:var(--dim); line-height:1.75; text-align:left;
+  }
+  .tips b{color:#b9c2d6; font-weight:700;}
+  .foot{font-size:11px; color:#5c6479;}
+</style>
+</head>
+<body>
+
+  <main class="card">
+    <h1>🎵 애니 & 노래 <span>맞추기 퀴즈</span></h1>
+
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">상태 확인 중…</span>
+    </div>
+
+    <a class="btn" id="joinBtn" aria-disabled="true" href="#">접속 주소를 불러오는 중…</a>
+
+    <div class="meta">
+      <span id="updated">—</span>
+      <button class="refresh" id="refreshBtn" type="button">새로고침</button>
+    </div>
+
+    <div class="tips">
+      <b>이 페이지를 북마크해 두세요.</b><br>
+      게임 서버 주소는 켤 때마다 바뀌지만, 이 주소는 그대로입니다.
+      서버가 켜져 있으면 위 버튼이 현재 주소로 연결해 줍니다.
+    </div>
+  </main>
+
+  <div class="foot">약 10초마다 자동으로 상태를 확인합니다</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── 상태 파일 위치 ──
+  // 같은 레포의 status.json 을 읽습니다. 런처가 서버를 켜고 끌 때마다 갱신합니다.
+  // CDN 캐시를 피하려고 주소 끝에 매번 다른 값을 붙입니다.
+  var STATUS_URL = 'https://raw.githubusercontent.com/INGlancer/aniquiz-play/main/status.json';
+  var POLL_MS = 10000;        // 자동 확인 주기
+  var STALE_MIN = 25;         // 이 시간보다 오래된 '켜짐'은 믿지 않음 (런처가 비정상 종료된 경우)
+
+  var dot = document.getElementById('dot');
+  var statusText = document.getElementById('statusText');
+  var joinBtn = document.getElementById('joinBtn');
+  var updated = document.getElementById('updated');
+  var refreshBtn = document.getElementById('refreshBtn');
+
+  function setDot(kind) { dot.className = 'dot' + (kind ? ' ' + kind : ''); }
+
+  function ago(iso) {
+    var t = Date.parse(iso || '');
+    if (isNaN(t)) return null;
+    var sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (sec < 60) return '방금 전';
+    var min = Math.round(sec / 60);
+    if (min < 60) return min + '분 전';
+    var hr = Math.round(min / 60);
+    if (hr < 24) return hr + '시간 전';
+    return Math.round(hr / 24) + '일 전';
+  }
+
+  function minutesSince(iso) {
+    var t = Date.parse(iso || '');
+    if (isNaN(t)) return Infinity;
+    return (Date.now() - t) / 60000;
+  }
+
+  function showOnline(url, at) {
+    setDot('on');
+    statusText.textContent = '서버 켜짐';
+    joinBtn.textContent = '🚀 게임 접속하기';
+    joinBtn.href = url;
+    joinBtn.setAttribute('aria-disabled', 'false');
+    joinBtn.removeAttribute('tabindex');
+    updated.textContent = at ? '마지막 확인 ' + (ago(at) || '-') : '';
+  }
+
+  function showOffline(at) {
+    setDot('off');
+    statusText.textContent = '서버 꺼짐';
+    joinBtn.textContent = '지금은 접속할 수 없습니다';
+    joinBtn.href = '#';
+    joinBtn.setAttribute('aria-disabled', 'true');
+    joinBtn.setAttribute('tabindex', '-1');
+    updated.textContent = at ? '마지막 갱신 ' + (ago(at) || '-') : '';
+  }
+
+  function showUnknown(msg, at) {
+    setDot('warn');
+    statusText.textContent = msg;
+    joinBtn.textContent = '상태를 확인할 수 없습니다';
+    joinBtn.href = '#';
+    joinBtn.setAttribute('aria-disabled', 'true');
+    joinBtn.setAttribute('tabindex', '-1');
+    updated.textContent = at ? '마지막 갱신 ' + (ago(at) || '-') : '';
+  }
+
+  joinBtn.addEventListener('click', function (e) {
+    if (joinBtn.getAttribute('aria-disabled') === 'true') e.preventDefault();
+  });
+
+  var busy = false;
+  function check() {
+    if (busy) return;
+    busy = true;
+    refreshBtn.disabled = true;
+
+    fetch(STATUS_URL + '?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        d = d || {};
+        var at = d.at || d.updatedAt || null;
+        if (d.online && d.url) {
+          // 런처가 갑자기 종료되면 '켜짐'인 채로 남습니다. 너무 오래된 값은 신뢰하지 않습니다.
+          if (minutesSince(at) > STALE_MIN) showUnknown('상태가 오래되었습니다', at);
+          else showOnline(d.url, at);
+        } else {
+          showOffline(at);
+        }
+      })
+      .catch(function () {
+        showUnknown('상태를 불러오지 못했습니다', null);
+      })
+      .then(function () {
+        busy = false;
+        refreshBtn.disabled = false;
+      });
+  }
+
+  refreshBtn.addEventListener('click', check);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') check();   // 폰에서 다시 열면 즉시 갱신
+  });
+
+  check();
+  setInterval(check, POLL_MS);
+})();
+</script>
+</body>
+</html>
