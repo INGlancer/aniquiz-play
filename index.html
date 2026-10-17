@@ -110,6 +110,10 @@
   //   (배포가 끝나야 갱신되므로 몇 분 느릴 수 있습니다)
   var STATUS_URL = 'status.json';
   var POLL_MS = 20000;        // 자동 확인 주기
+  // API 는 IP당 시간당 60회 제한입니다. 한도를 넘기면 느린 경로로 떨어지므로
+  // 자동 확인에서는 이 간격보다 자주 부르지 않습니다 (시간당 약 40회).
+  // 그 사이에는 배포된 파일만 보고, '새로고침'을 누르면 간격과 무관하게 바로 조회합니다.
+  var API_MIN_GAP_MS = 90000;
   var STALE_MIN = 45;         // 이 시간보다 오래된 '켜짐'은 믿지 않음 (런처가 비정상 종료된 경우)
 
   var dot = document.getElementById('dot');
@@ -201,13 +205,20 @@
   }
 
   var busy = false;
+  var lastApiAt = 0;
   function check(deep) {
     if (busy) return;
     busy = true;
     refreshBtn.disabled = true;
 
     // 주 경로(API) 와 보조 경로(배포된 파일) 를 함께 읽고 더 최근 값을 씁니다.
-    var jobs = [readApi(!!deep), readPages().catch(function () { return null; })];
+    // API 는 한도를 아끼려고 간격을 두고, 수동 확인일 때만 무조건 부릅니다.
+    var useApi = deep || (Date.now() - lastApiAt >= API_MIN_GAP_MS);
+    if (useApi) lastApiAt = Date.now();
+    var jobs = [
+      useApi ? readApi(!!deep) : Promise.resolve(null),
+      readPages().catch(function () { return null; })
+    ];
     Promise.all(jobs)
       .then(function (list) {
         // 두 경로 중 더 최근에 기록된 값을 채택합니다.
@@ -236,7 +247,13 @@
   });
 
   check();
-  setInterval(check, POLL_MS);
+  setInterval(function () {
+    // 다른 탭을 보고 있거나 창이 내려가 있으면 확인하지 않습니다.
+    // 열어두기만 한 탭이 한도를 갉아먹지 않게 하려는 것이고,
+    // 다시 돌아오는 순간 아래 visibilitychange 가 즉시 확인합니다.
+    if (document.hidden) return;
+    check();
+  }, POLL_MS);
 })();
 </script>
 </body>
