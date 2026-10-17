@@ -90,7 +90,7 @@
     </div>
   </main>
 
-  <div class="foot">상태는 1분 안에 자동으로 반영됩니다 · 바로 보려면 <b>새로고침</b></div>
+  <div class="foot">상태는 바로 반영됩니다 · 늦어 보이면 <b>새로고침</b></div>
 
 <script>
 (function () {
@@ -223,18 +223,21 @@
     busy = true;
     refreshBtn.disabled = true;
 
-    // 주 경로(API) 와 보조 경로(배포된 파일) 를 함께 읽고 더 최근 값을 씁니다.
-    // API 는 한도를 아끼려고 간격을 두고, 수동 확인일 때만 무조건 부릅니다.
-    var useApi = deep || (Date.now() - lastApiAt >= API_MIN_GAP_MS);
-    if (useApi) lastApiAt = Date.now();
-    var jobs = [
-      readDoor(),
-      useApi ? readApi(!!deep) : Promise.resolve(null),
-      readPages().catch(function () { return null; })
-    ];
-    Promise.all(jobs)
+    // 1) 먼저 접속 문에 물어봅니다. 캐시도 호출 한도도 없고 가장 최신입니다.
+    // 2) 문이 답하면 거기서 끝 — GitHub 은 건드리지 않아 한도를 아낍니다.
+    // 3) 문이 자고 있거나 죽었을 때만 GitHub(API·배포파일) 로 넘어갑니다.
+    readDoor()
+      .then(function (fromDoor) {
+        if (fromDoor) return [fromDoor];
+        var useApi = deep || (Date.now() - lastApiAt >= API_MIN_GAP_MS);
+        if (useApi) lastApiAt = Date.now();
+        return Promise.all([
+          useApi ? readApi(!!deep) : Promise.resolve(null),
+          readPages().catch(function () { return null; })
+        ]);
+      })
       .then(function (list) {
-        // 두 경로 중 더 최근에 기록된 값을 채택합니다.
+        // 여러 곳에서 받았다면 더 최근에 기록된 값을 채택합니다.
         var best = null, bestT = -1;
         list.forEach(function (d) {
           if (!d) return;

@@ -77,42 +77,94 @@ function readBody(req) {
   });
 }
 
+// 문에서 직접 보여주는 페이지.
+// GitHub Pages 쪽 페이지와 안내 문구·디자인을 똑같이 맞춰 둡니다.
+// (이 주소도 고정이라 북마크 대상이고, 들어온 사람이 보는 내용이 달라야 할 이유가 없습니다)
 const PAGE = `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>애니 퀴즈 접속</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
 <style>
- body{margin:0;min-height:100dvh;background:#0f1424;color:#eef1f8;display:flex;
-      align-items:center;justify-content:center;padding:24px;
-      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic',sans-serif;}
- .c{background:#16213e;border:1px solid #2d2d44;border-radius:18px;padding:28px 24px;
-    width:100%;max-width:420px;text-align:center;display:flex;flex-direction:column;gap:16px;}
- h1{margin:0;font-size:18px;} .s{font-size:16px;font-weight:700;}
- a.b{display:block;padding:14px;border-radius:11px;background:#4ecca3;color:#10251d;
-     text-decoration:none;font-weight:800;}
- a.b[aria-disabled=true]{background:#232a3f;color:#5c6479;pointer-events:none;}
- .m{font-size:11.5px;color:#8b93a7;}
+ :root{--bg:#0f1424;--card:#16213e;--line:#2d2d44;--ink:#eef1f8;--dim:#8b93a7;
+       --on:#4ecca3;--off:#e94560;--warn:#ffb020;}
+ *{box-sizing:border-box;}
+ body{margin:0;min-height:100dvh;background:var(--bg);color:var(--ink);
+   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;
+   display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;gap:18px;}
+ .card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--line);
+   border-radius:18px;padding:28px 24px;box-shadow:0 18px 50px rgba(0,0,0,.45);
+   display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center;}
+ h1{margin:0;font-size:19px;letter-spacing:-.3px;} h1 span{color:var(--on);}
+ .status{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700;}
+ .dot{width:13px;height:13px;border-radius:50%;background:var(--dim);flex:0 0 auto;}
+ .dot.on{background:var(--on);box-shadow:0 0 0 0 rgba(78,204,163,.55);animation:pulse 2s infinite;}
+ .dot.off{background:var(--off);} .dot.warn{background:var(--warn);}
+ @keyframes pulse{70%{box-shadow:0 0 0 12px rgba(78,204,163,0);}100%{box-shadow:0 0 0 0 rgba(78,204,163,0);}}
+ @media (prefers-reduced-motion:reduce){.dot.on{animation:none;}}
+ .btn{width:100%;padding:15px 20px;border-radius:11px;border:none;cursor:pointer;
+   font-size:16px;font-weight:800;font-family:inherit;text-decoration:none;
+   display:flex;align-items:center;justify-content:center;gap:8px;
+   background:var(--on);color:#10251d;transition:transform .08s ease,filter .15s ease;}
+ .btn:hover{filter:brightness(1.07);} .btn:active{transform:translateY(1px);}
+ .btn[aria-disabled="true"]{background:#232a3f;color:#5c6479;cursor:not-allowed;filter:none;transform:none;}
+ .meta{font-size:11.5px;color:var(--dim);display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;}
+ .refresh{background:none;border:1px solid var(--line);color:var(--dim);font-family:inherit;
+   font-size:11.5px;padding:4px 10px;border-radius:999px;cursor:pointer;}
+ .refresh:hover{color:var(--ink);border-color:#3d4260;}
+ .tips{width:100%;border-top:1px solid var(--line);padding-top:16px;
+   font-size:12px;color:var(--dim);line-height:1.75;text-align:left;}
+ .tips b{color:#b9c2d6;font-weight:700;}
+ .foot{font-size:11px;color:#5c6479;}
 </style></head><body>
-<div class="c">
-  <h1>🎵 애니 &amp; 노래 맞추기 퀴즈</h1>
-  <div class="s" id="s">확인 중…</div>
-  <a class="b" id="b" aria-disabled="true" href="#">잠시만요…</a>
-  <div class="m" id="m"></div>
-</div>
+ <main class="card">
+   <h1>🎵 애니 &amp; 노래 <span>맞추기 퀴즈</span></h1>
+   <div class="status"><span class="dot" id="dot"></span><span id="statusText">상태 확인 중…</span></div>
+   <a class="btn" id="joinBtn" aria-disabled="true" href="#">접속 주소를 불러오는 중…</a>
+   <div class="meta"><span id="updated">—</span>
+     <button class="refresh" id="refreshBtn" type="button">새로고침</button></div>
+   <div class="tips">
+     <b>이 페이지를 북마크해 두세요.</b><br>
+     게임 서버 주소는 켤 때마다 바뀌지만, 이 주소는 그대로입니다.
+     서버가 켜져 있으면 위 버튼이 현재 주소로 연결해 줍니다.<br>
+     방금 켜졌는데 꺼짐으로 보이면 <b>새로고침</b>을 눌러 주세요.
+   </div>
+ </main>
+ <div class="foot">상태는 바로 반영됩니다 · 바로 보려면 <b>새로고침</b></div>
 <script>
-async function tick(){
-  try{
-    const d = await (await fetch('/status',{cache:'no-store'})).json();
-    const s=document.getElementById('s'), b=document.getElementById('b'), m=document.getElementById('m');
-    if(d.online && d.url){ s.textContent='🟢 서버 켜짐'; b.textContent='🚀 게임 접속하기';
-      b.href=d.url; b.setAttribute('aria-disabled','false'); }
-    else { s.textContent='🔴 서버 꺼짐'; b.textContent='지금은 접속할 수 없습니다';
-      b.href='#'; b.setAttribute('aria-disabled','true'); }
-    m.textContent = d.at ? ('마지막 갱신 ' + new Date(d.at).toLocaleString('ko-KR')) : '';
-  }catch(e){}
-}
-tick(); setInterval(()=>{ if(!document.hidden) tick(); }, 10000);
-document.addEventListener('visibilitychange',()=>{ if(!document.hidden) tick(); });
+(function(){
+ var dot=document.getElementById('dot'), st=document.getElementById('statusText'),
+     btn=document.getElementById('joinBtn'), up=document.getElementById('updated'),
+     rf=document.getElementById('refreshBtn');
+ function ago(iso){var t=Date.parse(iso||'');if(isNaN(t))return null;
+   var s=Math.max(0,Math.round((Date.now()-t)/1000));
+   if(s<60)return '방금 전';var m=Math.round(s/60);if(m<60)return m+'분 전';
+   var h=Math.round(m/60);if(h<24)return h+'시간 전';return Math.round(h/24)+'일 전';}
+ btn.addEventListener('click',function(e){if(btn.getAttribute('aria-disabled')==='true')e.preventDefault();});
+ var busy=false;
+ function tick(){
+   if(busy)return; busy=true; rf.disabled=true;
+   fetch('/status',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+     d=d||{};
+     if(d.online&&d.url){
+       dot.className='dot on'; st.textContent='서버 켜짐';
+       btn.textContent='🚀 게임 접속하기'; btn.href=d.url;
+       btn.setAttribute('aria-disabled','false'); btn.removeAttribute('tabindex');
+     }else{
+       dot.className='dot off'; st.textContent='서버 꺼짐';
+       btn.textContent='지금은 접속할 수 없습니다'; btn.href='#';
+       btn.setAttribute('aria-disabled','true'); btn.setAttribute('tabindex','-1');
+     }
+     up.textContent=d.at?('마지막 갱신 '+(ago(d.at)||'-')):'';
+   }).catch(function(){
+     dot.className='dot warn'; st.textContent='상태를 불러오지 못했습니다';
+     btn.textContent='상태를 확인할 수 없습니다'; btn.setAttribute('aria-disabled','true');
+   }).then(function(){busy=false;rf.disabled=false;});
+ }
+ rf.addEventListener('click',tick);
+ document.addEventListener('visibilitychange',function(){if(!document.hidden)tick();});
+ tick(); setInterval(function(){if(!document.hidden)tick();},10000);
+})();
 </script></body></html>`;
 
 const server = http.createServer(async (req, res) => {
