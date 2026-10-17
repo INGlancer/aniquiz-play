@@ -101,6 +101,10 @@
   // raw.githubusercontent.com 은 쿼리스트링을 캐시 키로 쓰지 않아 최대 5분까지
   // 옛날 값을 돌려줍니다(확인함: ?t= 를 붙여도 source-age 가 그대로). 반면 Pages 는
   // 새로 배포될 때 캐시가 비워지므로 커밋이 반영되는 즉시 최신 값이 나옵니다.
+  // 가장 빠른 경로: Render 에 올린 '접속 문'. 캐시도 호출 한도도 없어 즉시 반영됩니다.
+  // 비워두면 아래 GitHub 경로만 씁니다. (문을 배포한 뒤 주소를 적어 넣으세요)
+  var DOOR_URL = '';
+
   // 주 경로: GitHub API. 레포의 현재 내용을 그대로 돌려주므로 배포를 기다리지 않습니다.
   //   API 응답은 60초짜리 캐시 지시를 달고 옵니다. 그래서 브라우저가 60초마다 한 번만
   //   서버에 묻고(조건부 요청), 바뀐 게 없으면 304 로 끝납니다. 304 는 호출 한도에
@@ -176,6 +180,14 @@
     if (joinBtn.getAttribute('aria-disabled') === 'true') e.preventDefault();
   });
 
+  // 접속 문 — 실패하면(잠들어 있거나 아직 안 만들었거나) 조용히 무시합니다.
+  function readDoor() {
+    if (!DOOR_URL) return Promise.resolve(null);
+    return fetch(DOOR_URL.replace(/\/+$/, '') + '/status', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .catch(function () { return null; });
+  }
+
   function readPages() {
     return fetch(STATUS_URL + '?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
@@ -216,6 +228,7 @@
     var useApi = deep || (Date.now() - lastApiAt >= API_MIN_GAP_MS);
     if (useApi) lastApiAt = Date.now();
     var jobs = [
+      readDoor(),
       useApi ? readApi(!!deep) : Promise.resolve(null),
       readPages().catch(function () { return null; })
     ];

@@ -1,0 +1,13 @@
+{
+  "name": "aniquiz-door",
+  "version": "1.0.0",
+  "private": true,
+  "description": "애니퀴즈 접속 문 — 현재 터널 주소를 알려주는 작은 서버",
+  "main": "door.js",
+  "scripts": {
+    "start": "node door.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
